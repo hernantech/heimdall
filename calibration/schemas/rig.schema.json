@@ -1,0 +1,119 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://heimdall.dev/schemas/rig/v1",
+    "title": "Heimdall Camera Rig Calibration",
+    "description": "OpenCV-convention camera calibration for a multi-camera rig",
+    "type": "object",
+    "required": ["version", "rig_id", "cameras"],
+    "properties": {
+        "version": {
+            "const": "1.0"
+        },
+        "rig_id": {
+            "type": "string",
+            "description": "Unique identifier for this rig configuration"
+        },
+        "timestamp": {
+            "type": "string",
+            "format": "date-time"
+        },
+        "cameras": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/camera" },
+            "minItems": 1
+        }
+    },
+    "$defs": {
+        "camera": {
+            "type": "object",
+            "required": ["serial_number", "image_size", "camera_matrix", "dist_coeffs", "rvec", "tvec"],
+            "properties": {
+                "serial_number": {
+                    "type": "integer",
+                    "description": "Hardware serial number"
+                },
+                "camera_index": {
+                    "type": "integer",
+                    "description": "Zero-based index in the rig"
+                },
+                "image_size": {
+                    "type": "array",
+                    "items": { "type": "integer" },
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "description": "[width, height] in pixels"
+                },
+                "camera_matrix": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "minItems": 3,
+                        "maxItems": 3
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "3x3 intrinsic matrix [[fx, 0, cx], [0, fy, cy], [0, 0, 1]]"
+                },
+                "dist_coeffs": {
+                    "type": "array",
+                    "items": { "type": "number" },
+                    "description": "Distortion coefficients [k1, k2, p1, p2, k3, ...] (OpenCV convention)"
+                },
+                "rvec": {
+                    "type": "array",
+                    "items": { "type": "number" },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "Rodrigues rotation vector (world to camera)"
+                },
+                "tvec": {
+                    "type": "array",
+                    "items": { "type": "number" },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "Translation vector (world to camera) in meters"
+                },
+                "rotation_matrix": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "minItems": 3,
+                        "maxItems": 3
+                    },
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "description": "3x3 rotation matrix (derived from rvec, optional cache)"
+                },
+                "color_correction": {
+                    "type": "object",
+                    "properties": {
+                        "matrix_3x3": {
+                            "type": "array",
+                            "description": "3x3 color correction matrix (row-major)"
+                        },
+                        "offset": {
+                            "type": "array",
+                            "items": { "type": "number" },
+                            "minItems": 3,
+                            "maxItems": 3
+                        }
+                    }
+                },
+                "exposure": {
+                    "type": "object",
+                    "properties": {
+                        "gain": { "type": "number" },
+                        "shutter_speed_s": { "type": "number" },
+                        "f_stop": { "type": "number" }
+                    }
+                },
+                "reprojection_error_px": {
+                    "type": "number",
+                    "description": "RMS reprojection error from calibration"
+                }
+            }
+        }
+    }
+}

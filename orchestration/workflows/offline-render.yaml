@@ -1,0 +1,210 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: heimdall-render-
+  labels:
+    pipeline: heimdall
+spec:
+  entrypoint: render-pipeline
+  arguments:
+    parameters:
+      - name: show
+      - name: shot
+      - name: frames
+        value: "0-100"
+      - name: rig-config
+      - name: artifact-bucket
+        value: "heimdall-artifacts"
+
+  artifactRepositoryRef:
+    configMap: artifact-repositories
+    key: default-s3
+
+  templates:
+    - name: render-pipeline
+      dag:
+        tasks:
+          - name: segment
+            template: run-segmentation
+            arguments:
+              parameters:
+                - name: show
+                  value: "{{workflow.parameters.show}}"
+                - name: shot
+                  value: "{{workflow.parameters.shot}}"
+                - name: frames
+                  value: "{{workflow.parameters.frames}}"
+
+          - name: depth
+            template: run-depth
+            dependencies: [segment]
+            arguments:
+              artifacts:
+                - name: masks
+                  from: "{{tasks.segment.outputs.artifacts.masks}}"
+
+          - name: fuse
+            template: run-fusion
+            dependencies: [depth]
+            arguments:
+              artifacts:
+                - name: depth-maps
+                  from: "{{tasks.depth.outputs.artifacts.depth-maps}}"
+
+          - name: mesh
+            template: run-mesh-processing
+            dependencies: [fuse]
+            arguments:
+              artifacts:
+                - name: point-cloud
+                  from: "{{tasks.fuse.outputs.artifacts.point-cloud}}"
+
+          - name: texture
+            template: run-texturing
+            dependencies: [mesh]
+            arguments:
+              artifacts:
+                - name: mesh-data
+                  from: "{{tasks.mesh.outputs.artifacts.mesh-data}}"
+
+          - name: encode
+            template: run-encode
+            dependencies: [texture]
+            arguments:
+              artifacts:
+                - name: textured-mesh
+                  from: "{{tasks.texture.outputs.artifacts.textured-mesh}}"
+
+    # --- Templates ---
+
+    - name: run-segmentation
+      inputs:
+        parameters:
+          - name: show
+          - name: shot
+          - name: frames
+      container:
+        image: registry.heimdall.dev/segmentation:latest
+        command: ["python", "segment.py"]
+        args:
+          - "--show={{inputs.parameters.show}}"
+          - "--shot={{inputs.parameters.shot}}"
+          - "--frames={{inputs.parameters.frames}}"
+          - "--model=rvm"
+          - "--output=/output/masks/"
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+            memory: "16Gi"
+      outputs:
+        artifacts:
+          - name: masks
+            path: /output/masks/
+
+    - name: run-depth
+      inputs:
+        artifacts:
+          - name: masks
+            path: /input/masks/
+      container:
+        image: registry.heimdall.dev/depth:latest
+        command: ["python", "estimate_depth.py"]
+        args:
+          - "--method=foundation-stereo"
+          - "--masks=/input/masks/"
+          - "--output=/output/depth/"
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+            memory: "24Gi"
+      outputs:
+        artifacts:
+          - name: depth-maps
+            path: /output/depth/
+
+    - name: run-fusion
+      inputs:
+        artifacts:
+          - name: depth-maps
+            path: /input/depth/
+      container:
+        image: registry.heimdall.dev/fusion:latest
+        command: ["heimdall_fuse"]
+        args:
+          - "--input=/input/depth/"
+          - "--output=/output/cloud/"
+          - "--method=vdb-tsdf"
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+            memory: "32Gi"
+      outputs:
+        artifacts:
+          - name: point-cloud
+            path: /output/cloud/
+
+    - name: run-mesh-processing
+      inputs:
+        artifacts:
+          - name: point-cloud
+            path: /input/cloud/
+      container:
+        image: registry.heimdall.dev/mesh:latest
+        command: ["heimdall_mesh"]
+        args:
+          - "--input=/input/cloud/"
+          - "--output=/output/mesh/"
+          - "--target-faces=25000"
+          - "--simplifier=meshoptimizer"
+          - "--uv=xatlas"
+        resources:
+          limits:
+            memory: "16Gi"
+      outputs:
+        artifacts:
+          - name: mesh-data
+            path: /output/mesh/
+
+    - name: run-texturing
+      inputs:
+        artifacts:
+          - name: mesh-data
+            path: /input/mesh/
+      container:
+        image: registry.heimdall.dev/texture:latest
+        command: ["heimdall_texture"]
+        args:
+          - "--input=/input/mesh/"
+          - "--output=/output/textured/"
+          - "--resolution=2048"
+          - "--format=ktx2"
+          - "--ocio-config=/config/ocio/config.ocio"
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+            memory: "16Gi"
+      outputs:
+        artifacts:
+          - name: textured-mesh
+            path: /output/textured/
+
+    - name: run-encode
+      inputs:
+        artifacts:
+          - name: textured-mesh
+            path: /input/textured/
+      container:
+        image: registry.heimdall.dev/encode:latest
+        command: ["heimdall_encode"]
+        args:
+          - "--input=/input/textured/"
+          - "--output=/output/gltf/"
+          - "--compression=meshopt"
+          - "--texture-format=ktx2"
+        resources:
+          limits:
+            memory: "8Gi"
+      outputs:
+        artifacts:
+          - name: gltf-output
+            path: /output/gltf/

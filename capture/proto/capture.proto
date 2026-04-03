@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package heimdall.capture;
+
+service VolCapture {
+    rpc PushSettings(CaptureSettings) returns (Ack);
+    rpc StreamFrames(stream CaptureFrame) returns (stream FrameAck);
+    rpc GetStatus(Empty) returns (CaptureStatus);
+}
+
+message Empty {}
+
+message Ack {
+    bool ok = 1;
+    string message = 2;
+}
+
+message CaptureSettings {
+    string rig_config_path = 1;
+    int32 target_fps = 2;
+    bool enable_matting = 3;
+    bool enable_preview = 4;
+    repeated CameraOverride camera_overrides = 5;
+}
+
+message CameraOverride {
+    int32 camera_index = 1;
+    float gain = 2;
+    float exposure_ms = 3;
+}
+
+message CaptureFrame {
+    int64 frame_id = 1;
+    int64 timestamp_ns = 2;
+    int32 num_cameras = 3;
+    repeated CameraImage images = 4;
+    FrameMetrics metrics = 5;
+}
+
+message CameraImage {
+    int32 camera_index = 1;
+    int32 serial_number = 2;
+    int32 width = 3;
+    int32 height = 4;
+    int32 channels = 5;
+    int32 bit_depth = 6;
+
+    oneof data {
+        bytes cpu_data = 7;
+        int64 gpu_ptr = 8;         // CUDA device pointer (for zero-copy IPC)
+        string shm_handle = 9;     // iceoryx / shared memory handle
+    }
+
+    bytes alpha_data = 10;
+    bytes depth_data = 11;
+}
+
+message FrameMetrics {
+    double capture_latency_ms = 1;
+    double sync_delta_ms = 2;
+    int32 dropped_frames = 3;
+    repeated double per_camera_latency_ms = 4;
+}
+
+message FrameAck {
+    int64 frame_id = 1;
+    bool accepted = 2;
+    double processing_latency_ms = 3;
+}
+
+message CaptureStatus {
+    bool is_capturing = 1;
+    int32 connected_cameras = 2;
+    double current_fps = 3;
+    int64 total_frames = 4;
+}

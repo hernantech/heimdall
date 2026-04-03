@@ -1,0 +1,46 @@
+*.md
+
+# Build
+build/
+cmake-build-*/
+*.o
+*.so
+*.dylib
+*.a
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+
+# Models (downloaded, not tracked)
+segmentation/models/*.onnx
+segmentation/models/*.trt
+segmentation/models/*.pt
+depth/models/
+
+# Data
+data/
+*.tar
+*.tar.gz
+*.zip
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# Secrets
+.env
+*.pem
+*.key

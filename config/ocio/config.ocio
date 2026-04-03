@@ -1,0 +1,66 @@
+ocio_profile_version: 2.3
+
+environment: {}
+
+search_path: ""
+strictparsing: true
+luma: [0.2126, 0.7152, 0.0722]
+
+roles:
+  color_picking: srgb
+  color_timing: linear_rec709
+  compositing_log: linear_rec709
+  data: raw
+  default: linear_rec709
+  scene_linear: linear_rec709
+  texture_paint: srgb
+
+displays:
+  sRGB:
+    - !<View> {name: Raw, colorspace: raw}
+    - !<View> {name: sRGB, colorspace: srgb}
+    - !<View> {name: Linear, colorspace: linear_rec709}
+
+active_displays: [sRGB]
+active_views: [sRGB, Linear, Raw]
+
+colorspaces:
+  - !<ColorSpace>
+    name: linear_rec709
+    family: ""
+    equalitygroup: ""
+    bitdepth: 32f
+    description: |
+      Scene-linear Rec.709 / sRGB primaries.
+      Working space for all capture and reconstruction.
+    isdata: false
+
+  - !<ColorSpace>
+    name: camera_raw
+    family: capture
+    equalitygroup: ""
+    bitdepth: 16f
+    description: |
+      Camera sensor output (after demosaic, before color correction).
+      Per-camera correction matrix transforms this to linear_rec709.
+    isdata: false
+    to_scene_reference: !<MatrixTransform> {matrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]}
+
+  - !<ColorSpace>
+    name: srgb
+    family: display
+    equalitygroup: ""
+    bitdepth: 8ui
+    description: |
+      sRGB display / texture output.
+      Used for glTF texture atlases and web delivery.
+    isdata: false
+    from_scene_reference: !<ExponentWithLinearTransform> {gamma: 2.4, offset: 0.055, direction: inverse}
+
+  - !<ColorSpace>
+    name: raw
+    family: ""
+    equalitygroup: ""
+    bitdepth: 32f
+    description: Raw data, no transform.
+    isdata: true

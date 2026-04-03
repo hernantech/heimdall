@@ -1,0 +1,45 @@
+{
+    "$schema": "https://heimdall.dev/schemas/manifest/v1",
+    "version": "1.0",
+    "type": "volumetric-sequence",
+    "fps": 30,
+    "total_frames": 900,
+    "duration_s": 30.0,
+    "representation": "mesh",
+    "geometry": {
+        "compression": "meshopt",
+        "container": "glb",
+        "average_vertices": 12000,
+        "average_faces": 22000,
+        "average_frame_bytes": 85000
+    },
+    "texture": {
+        "format": "ktx2",
+        "resolution": [2048, 2048],
+        "compression": "basis_uastc",
+        "embedded": true
+    },
+    "segments": [
+        {
+            "index": 0,
+            "start_frame": 0,
+            "end_frame": 29,
+            "duration_s": 1.0,
+            "base_url": "segments/seg_000/",
+            "frames": [
+                {"frame": 0, "file": "frame_000000.glb", "bytes": 82400},
+                {"frame": 1, "file": "frame_000001.glb", "bytes": 84200}
+            ],
+            "total_bytes": 2520000
+        }
+    ],
+    "lod_levels": [
+        {"level": 0, "max_faces": 25000, "texture_resolution": 2048, "label": "high"},
+        {"level": 1, "max_faces": 12000, "texture_resolution": 1024, "label": "medium"},
+        {"level": 2, "max_faces": 5000,  "texture_resolution": 512,  "label": "low"}
+    ],
+    "fallback": {
+        "representations": ["mesh", "pointcloud"],
+        "no_texture_available": true
+    }
+}
