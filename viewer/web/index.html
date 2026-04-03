@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>heimdall - Volumetric Viewer</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:       #0c0c10;
+            --surface:  #18181f;
+            --border:   #2a2a36;
+            --text:     #d0d0e0;
+            --text-dim: #7878a0;
+            --accent:   #5588ff;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+            font-size: 13px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ---- Header bar -------------------------------------------------- */
+        header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 8px 16px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+
+        header h1 {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            color: var(--accent);
+        }
+
+        header .sep {
+            width: 1px;
+            height: 20px;
+            background: var(--border);
+        }
+
+        header label {
+            color: var(--text-dim);
+        }
+
+        header input, header select {
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 3px 8px;
+            font-family: inherit;
+            font-size: 12px;
+        }
+
+        header input { width: 320px; }
+
+        header button {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 14px;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        header button:hover { opacity: 0.85; }
+
+        header button.secondary {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        /* ---- Canvas viewport --------------------------------------------- */
+        main {
+            flex: 1;
+            position: relative;
+        }
+
+        canvas#viewer {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ---- Stats overlay ----------------------------------------------- */
+        #stats {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            background: rgba(12, 12, 16, 0.82);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 10px 14px;
+            line-height: 1.7;
+            pointer-events: none;
+            min-width: 200px;
+        }
+
+        #stats .label {
+            color: var(--text-dim);
+        }
+
+        #stats .value {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        #stats .value.good { color: #44dd88; }
+        #stats .value.warn { color: #eebb44; }
+        #stats .value.bad  { color: #ee5544; }
+
+        /* ---- Connection status ------------------------------------------- */
+        #connection-status {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(12, 12, 16, 0.82);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+
+        .dot.connected    { background: #44dd88; }
+        .dot.connecting   { background: #eebb44; }
+        .dot.disconnected { background: #ee5544; }
+        .dot.error        { background: #ee5544; }
+    </style>
+</head>
+<body>
+    <!-- ---- Header controls ---- -->
+    <header>
+        <h1>HEIMDALL</h1>
+        <div class="sep"></div>
+
+        <label for="mode-select">Mode:</label>
+        <select id="mode-select">
+            <option value="live">Live (WebRTC)</option>
+            <option value="vod">VOD (Manifest)</option>
+        </select>
+
+        <label for="endpoint-input">Endpoint:</label>
+        <input id="endpoint-input" type="text"
+               placeholder="wss://example.com/rtc/offer or https://example.com/manifest.json">
+
+        <button id="connect-btn">Connect</button>
+        <button id="play-btn" class="secondary">Play</button>
+        <button id="pause-btn" class="secondary">Pause</button>
+    </header>
+
+    <!-- ---- Viewport ---- -->
+    <main>
+        <canvas id="viewer"></canvas>
+
+        <!-- Stats overlay -->
+        <div id="stats">
+            <div><span class="label">FPS:</span> <span id="stat-fps" class="value">--</span></div>
+            <div><span class="label">Gaussians:</span> <span id="stat-gaussians" class="value">--</span></div>
+            <div><span class="label">Latency:</span> <span id="stat-latency" class="value">-- ms</span></div>
+            <div><span class="label">Renderer:</span> <span id="stat-renderer" class="value">--</span></div>
+            <div><span class="label">Buffer:</span> <span id="stat-buffer" class="value">--</span></div>
+        </div>
+
+        <!-- Connection indicator -->
+        <div id="connection-status">
+            <span id="status-dot" class="dot disconnected"></span>
+            <span id="status-text">Disconnected</span>
+        </div>
+    </main>
+
+    <!-- ---- Application logic ---- -->
+    <script type="module">
+        import { HeimdallViewer } from './src/heimdall-viewer.js';
+
+        // ---- DOM references ------------------------------------------------
+        const canvas       = document.getElementById('viewer');
+        const modeSelect   = document.getElementById('mode-select');
+        const endpointIn   = document.getElementById('endpoint-input');
+        const connectBtn   = document.getElementById('connect-btn');
+        const playBtn      = document.getElementById('play-btn');
+        const pauseBtn     = document.getElementById('pause-btn');
+
+        const statFps       = document.getElementById('stat-fps');
+        const statGaussians = document.getElementById('stat-gaussians');
+        const statLatency   = document.getElementById('stat-latency');
+        const statRenderer  = document.getElementById('stat-renderer');
+        const statBuffer    = document.getElementById('stat-buffer');
+        const statusDot     = document.getElementById('status-dot');
+        const statusText    = document.getElementById('status-text');
+
+        /** @type {HeimdallViewer | null} */
+        let viewer = null;
+
+        // ---- Connect button ------------------------------------------------
+        connectBtn.addEventListener('click', async () => {
+            const mode = modeSelect.value;
+            const endpoint = endpointIn.value.trim();
+
+            if (!endpoint) {
+                alert('Please enter an endpoint URL.');
+                return;
+            }
+
+            // Tear down any existing viewer.
+            if (viewer) {
+                viewer.destroy();
+                viewer = null;
+            }
+
+            setStatus('connecting');
+
+            try {
+                const opts = { mode };
+                if (mode === 'live') {
+                    opts.signalingUrl = endpoint;
+                } else {
+                    opts.manifestUrl = endpoint;
+                }
+
+                viewer = new HeimdallViewer(canvas, opts);
+
+                // Wire up stats callback.
+                viewer.onStats = (s) => updateStatsUI(s);
+
+                await viewer.init();
+                setStatus('connected');
+
+                // Auto-play after successful init.
+                viewer.play();
+            } catch (err) {
+                console.error('[heimdall] init failed:', err);
+                setStatus('error');
+            }
+        });
+
+        // ---- Play / Pause --------------------------------------------------
+        playBtn.addEventListener('click', () => { viewer?.play(); });
+        pauseBtn.addEventListener('click', () => { viewer?.pause(); });
+
+        // ---- Mode switch: update placeholder text --------------------------
+        modeSelect.addEventListener('change', () => {
+            endpointIn.placeholder = modeSelect.value === 'live'
+                ? 'wss://example.com/rtc/offer'
+                : 'https://example.com/manifest.json';
+        });
+
+        // ---- Stats UI update -----------------------------------------------
+        function updateStatsUI(s) {
+            statFps.textContent = s.fps;
+            statFps.className = 'value ' + (s.fps >= 28 ? 'good' : s.fps >= 15 ? 'warn' : 'bad');
+
+            statGaussians.textContent = s.gaussianCount.toLocaleString();
+            statGaussians.className = 'value';
+
+            const latency = Math.max(0, Math.round(s.latencyMs));
+            statLatency.textContent = `${latency} ms`;
+            statLatency.className = 'value ' + (latency < 100 ? 'good' : latency < 300 ? 'warn' : 'bad');
+
+            statRenderer.textContent = s.renderPath === 'webgpu' ? 'WebGPU (splat)' : 'WebGL (VDTM)';
+            statRenderer.className = 'value';
+
+            statBuffer.textContent = `${viewer ? 'ok' : '--'}`;
+            statBuffer.className = 'value';
+        }
+
+        function setStatus(state) {
+            statusDot.className = 'dot ' + state;
+            const labels = {
+                disconnected: 'Disconnected',
+                connecting:   'Connecting...',
+                connected:    'Connected',
+                error:        'Error',
+            };
+            statusText.textContent = labels[state] || state;
+        }
+
+        // ---- Mouse orbit controls (simple) ---------------------------------
+        let isDragging = false;
+        let lastMouse = { x: 0, y: 0 };
+        let orbitTheta = 0;     // horizontal angle (radians)
+        let orbitPhi = 0.3;     // vertical angle (radians)
+        let orbitRadius = 3.0;
+
+        function updateCameraFromOrbit() {
+            const x = orbitRadius * Math.cos(orbitPhi) * Math.sin(orbitTheta);
+            const y = orbitRadius * Math.sin(orbitPhi);
+            const z = orbitRadius * Math.cos(orbitPhi) * Math.cos(orbitTheta);
+            viewer?.setViewpoint([x, y, z], [0, 0, 0]);
+        }
+
+        canvas.addEventListener('pointerdown', (e) => {
+            isDragging = true;
+            lastMouse.x = e.clientX;
+            lastMouse.y = e.clientY;
+            canvas.setPointerCapture(e.pointerId);
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            if (!isDragging) return;
+            const dx = e.clientX - lastMouse.x;
+            const dy = e.clientY - lastMouse.y;
+            lastMouse.x = e.clientX;
+            lastMouse.y = e.clientY;
+
+            orbitTheta -= dx * 0.005;
+            orbitPhi   += dy * 0.005;
+            orbitPhi = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, orbitPhi));
+
+            updateCameraFromOrbit();
+        });
+
+        canvas.addEventListener('pointerup', () => { isDragging = false; });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            orbitRadius = Math.max(0.5, Math.min(20, orbitRadius + e.deltaY * 0.005));
+            updateCameraFromOrbit();
+        }, { passive: false });
+
+        // ---- Initial state -------------------------------------------------
+        setStatus('disconnected');
+    </script>
+</body>
+</html>

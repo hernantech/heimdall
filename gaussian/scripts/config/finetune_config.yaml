@@ -1,0 +1,143 @@
+# Heimdall fine-tuning configuration for feed-forward Gaussian splatting models.
+#
+# This config controls all hyperparameters for adapting a pretrained
+# DepthSplat or MVSplat model to a specific multi-camera volumetric capture rig.
+#
+# Usage:
+#   python finetune.py --config config/finetune_config.yaml
+#   python evaluate.py --config config/finetune_config.yaml --checkpoint outputs/checkpoints/epoch_050.pth
+
+# ---------------------------------------------------------------------------
+# Model
+# ---------------------------------------------------------------------------
+model:
+  # "depthsplat" or "mvsplat"
+  type: depthsplat
+
+  # Path to the pretrained checkpoint (e.g. trained on RealEstate10K).
+  checkpoint: /data/models/depthsplat_re10k.pth
+
+  # Number of source views fed to the model per forward pass.
+  # DepthSplat: 2-12 views; MVSplat: 2 views only.
+  num_source_views: 6
+
+  # Input resolution [height, width]. Must match the model's expected size.
+  # Images will be resized to this resolution before being fed to the model.
+  resolution: [512, 960]
+
+  # Spherical harmonics degree used by the model (0-3).
+  # Degree 3 = 16 coefficients per channel, 48 floats total (matches pipeline.h).
+  sh_degree: 3
+
+  # If true, freeze the encoder and only fine-tune the Gaussian prediction head.
+  # Useful when the pretrained encoder already generalizes well and you want
+  # to avoid catastrophic forgetting. Trains ~3x faster.
+  freeze_encoder: false
+
+# ---------------------------------------------------------------------------
+# Training
+# ---------------------------------------------------------------------------
+training:
+  epochs: 100
+  batch_size: 4
+
+  # Effective batch size via gradient accumulation.
+  # Useful when GPU memory is limited. Set to 1 to disable.
+  gradient_accumulation_steps: 1
+
+  # Optimizer
+  optimizer: adamw
+  lr: 1.0e-4
+  weight_decay: 1.0e-2
+  betas: [0.9, 0.999]
+
+  # Learning rate schedule
+  warmup_steps: 500
+  scheduler: cosine    # "cosine" or "step"
+  min_lr: 1.0e-6       # floor for cosine decay
+
+  # Gradient clipping (max norm). Set to 0 to disable.
+  grad_clip: 1.0
+
+  # Mixed precision training (fp16 via torch.cuda.amp)
+  mixed_precision: true
+
+  # Number of data-loading workers
+  num_workers: 8
+
+  # Random seed for reproducibility
+  seed: 42
+
+# ---------------------------------------------------------------------------
+# Loss
+# ---------------------------------------------------------------------------
+loss:
+  # Photometric loss weights on rendered vs ground-truth target views.
+  l1_weight: 0.8
+  ssim_weight: 0.2
+
+  # LPIPS perceptual loss. Adds ~200MB GPU memory for the VGG backbone.
+  # Set weight to 0.0 to disable.
+  lpips_weight: 0.05
+  lpips_net: vgg       # "vgg" or "alex"
+
+  # Opacity regularization: penalizes very low or very high opacity values
+  # to encourage clean geometry. Set to 0.0 to disable.
+  opacity_reg_weight: 0.001
+
+  # Scale regularization: penalizes excessively large Gaussians.
+  # Helps prevent floaters. Set to 0.0 to disable.
+  scale_reg_weight: 0.001
+
+# ---------------------------------------------------------------------------
+# Data
+# ---------------------------------------------------------------------------
+data:
+  # Root of the prepared training dataset (output of prepare_training_data.py).
+  dataset_dir: /data/heimdall/training_dataset
+
+  # Number of source views per training sample. Must be <= model.num_source_views.
+  # During training we randomly pick this many from the available cameras as
+  # source views; one additional camera is used as the target.
+  num_source_views: 6
+
+  # Augmentations applied during training.
+  augmentations:
+    # Random horizontal flip (applied consistently to all views + cameras).
+    horizontal_flip: false
+
+    # Random color jitter (brightness, contrast, saturation, hue).
+    color_jitter:
+      enabled: true
+      brightness: 0.1
+      contrast: 0.1
+      saturation: 0.1
+      hue: 0.02
+
+    # Random crop scale range. [1.0, 1.0] disables random cropping.
+    # The crop is taken at the model resolution after resizing.
+    random_crop_scale: [0.9, 1.0]
+
+# ---------------------------------------------------------------------------
+# Output
+# ---------------------------------------------------------------------------
+output:
+  # Directory to save checkpoints, logs, and evaluation reports.
+  checkpoint_dir: outputs/checkpoints
+  log_dir: outputs/logs
+
+  # Save a checkpoint every N epochs.
+  save_interval: 10
+
+  # Run validation and log metrics every N epochs.
+  eval_interval: 5
+
+  # Keep only the N most recent checkpoints (plus best). Set to 0 for unlimited.
+  keep_last_n: 5
+
+  # Logging backend: "tensorboard" or "wandb"
+  logger: tensorboard
+
+  # wandb project name (only used if logger == "wandb")
+  wandb_project: heimdall-finetune
+  wandb_entity: null
