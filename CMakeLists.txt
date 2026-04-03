@@ -13,6 +13,7 @@ option(BUILD_FUSION     "Build fusion module"        ON)
 option(BUILD_MESH       "Build mesh processing"      ON)
 option(BUILD_TEXTURE    "Build texturing module"     ON)
 option(BUILD_ENCODE     "Build encoding/packaging"   ON)
+option(BUILD_GAUSSIAN   "Build Gaussian splatting"   ON)
 option(BUILD_STREAM     "Build streaming module"     ON)
 option(BUILD_TESTS      "Build tests"                ON)
 
@@ -50,6 +51,10 @@ endif()
 
 if(BUILD_ENCODE)
     add_subdirectory(encode)
+endif()
+
+if(BUILD_GAUSSIAN)
+    add_subdirectory(gaussian)
 endif()
 
 if(BUILD_STREAM)
