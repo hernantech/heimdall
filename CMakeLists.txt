@@ -15,6 +15,8 @@ option(BUILD_TEXTURE    "Build texturing module"     ON)
 option(BUILD_ENCODE     "Build encoding/packaging"   ON)
 option(BUILD_GAUSSIAN   "Build Gaussian splatting"   ON)
 option(BUILD_TRANSPORT  "Build SRT transport"        ON)
+option(BUILD_WORKER     "Build distributed worker"   ON)
+option(BUILD_MERGE      "Build merge pipeline"       ON)
 option(BUILD_STREAM     "Build streaming module"     ON)
 option(BUILD_TESTS      "Build tests"                ON)
 
@@ -60,6 +62,14 @@ endif()
 
 if(BUILD_TRANSPORT)
     add_subdirectory(transport)
+endif()
+
+if(BUILD_WORKER)
+    add_subdirectory(worker)
+endif()
+
+if(BUILD_MERGE)
+    add_subdirectory(merge)
 endif()
 
 if(BUILD_STREAM)

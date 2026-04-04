@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package heimdall.worker;
+
+service GaussianWorker {
+    // Process a single frame (unary).
+    rpc ProcessFrame(ProcessFrameRequest) returns (ProcessFrameResponse);
+
+    // Bidirectional streaming for continuous capture.
+    rpc StreamFrames(stream ProcessFrameRequest) returns (stream ProcessFrameResponse);
+
+    // Health check.
+    rpc GetStatus(Empty) returns (WorkerStatus);
+}
+
+message Empty {}
+
+message StereoPairInput {
+    int32 camera_a_index = 1;
+    int32 camera_b_index = 2;
+
+    // H.265 NAL units per camera
+    bytes camera_a_nal = 3;
+    bytes camera_b_nal = 4;
+
+    // Calibration (OpenCV convention)
+    CameraCalibration camera_a_calib = 5;
+    CameraCalibration camera_b_calib = 6;
+}
+
+message CameraCalibration {
+    int32 serial_number = 1;
+    int32 width = 2;
+    int32 height = 3;
+    repeated float intrinsics_3x3 = 4;   // 9 floats, row-major
+    repeated float extrinsics_4x4 = 5;   // 16 floats, world-to-camera, row-major
+}
+
+message ProcessFrameRequest {
+    int64 frame_id = 1;
+    int64 timestamp_ns = 2;
+    repeated StereoPairInput stereo_pairs = 3;
+}
+
+message ProcessFrameResponse {
+    int64 frame_id = 1;
+    int32 num_gaussians = 2;
+    bytes quantized_gaussians = 3;      // opaque quantized blob (header + packed Gaussians)
+    int32 stereo_pairs_processed = 4;
+    double processing_time_ms = 5;
+    string worker_id = 6;
+}
+
+message WorkerStatus {
+    string worker_id = 1;
+    bool is_ready = 2;
+    int32 gpu_device = 3;
+    string gpu_name = 4;
+    int64 frames_processed = 5;
+    double avg_processing_time_ms = 6;
+    double gpu_memory_used_mb = 7;
+    double gpu_memory_total_mb = 8;
+}
