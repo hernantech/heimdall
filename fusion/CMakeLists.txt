@@ -15,6 +15,6 @@ target_link_libraries(heimdall_fusion
 
 set_target_properties(heimdall_fusion PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
-    CUDA_ARCHITECTURES "70;75;80;86;89;90"
+    CUDA_ARCHITECTURES "52;60;61;70;75;80;86;89;90"
     POSITION_INDEPENDENT_CODE ON
 )
